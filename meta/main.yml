@@ -4,18 +4,17 @@ galaxy_info:
   author: juju4
   description: Generate automatically gpg keys
   license: BSD
-  min_ansible_version: 1.9
+  min_ansible_version: '1.9'
   platforms:
     - name: EL
       versions:
-        - 7
-        - 8
+        - all
     - name: Ubuntu
       versions:
-        - trusty
-        - xenial
         - bionic
+        - focal
+        - jammy
   galaxy_tags:
     - security
 dependencies:
-  - juju4.redhat_epel
+  - role: juju4.redhat_epel

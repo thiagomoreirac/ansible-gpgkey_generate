@@ -4,34 +4,45 @@ name: AnsibleCI
 on:
   push:
   pull_request:
+  workflow_dispatch:
   schedule:  # run weekly, every monday 01:00
     - cron: '0 1 * * 1'
+
+permissions: {}
 
 jobs:
   build:
 
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        # python-version: [2.7, 3.5, 3.6, 3.7, 3.8]
-        python-version: [3.8]
-        molecule_distro:
-          - 'centos:8'
-          - 'centos:7'
-          - 'ubuntu:20.04'
-          - 'ubuntu:18.04'
+        include:
+          - molecule_distro: 'rockylinux:8'
+            experimental: false
+          - molecule_distro: 'centos:7'
+            experimental: false
+          - molecule_distro: 'ubuntu:22.04'
+            experimental: true
+          - molecule_distro: 'ubuntu:20.04'
+            experimental: false
+          - molecule_distro: 'ubuntu:18.04'
+            experimental: false
     env:
-      ANSIBLE_CALLBACK_WHITELIST: profile_tasks
+      ANSIBLE_CALLBACKS_ENABLED: profile_tasks
       MOLECULE_NO_LOG: "false"
+      ANSIBLE_ROLE: juju4.gpgkey_generate
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
-          path: juju4.gpgkey_generate
+          path: ${{ env.ANSIBLE_ROLE }}
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.x'
       - name: Install dependencies
@@ -40,16 +51,29 @@ jobs:
           pip install molecule[docker] ansible-lint flake8 testinfra ansible
           ansible --version
           ansible-lint --version
-          mkdir -p $HOME/.ansible/roles && ln -s $GITHUB_WORKSPACE/juju4.gpgkey_generate $HOME/.ansible/roles/
-          mkdir -p $HOME/.cache/molecule/juju4.gpgkey_generate/default && ln -s $HOME/.ansible/roles $HOME/.cache/molecule/juju4.gpgkey_generate/default/roles
+          mkdir -p $HOME/.ansible/roles && ln -s $GITHUB_WORKSPACE/$ANSIBLE_ROLE $HOME/.ansible/roles/
+      - name: Fetch central settings repository
+        run: |
+          export settings_repo="https://raw.githubusercontent.com/juju4/ansible-ci-settings/main"
+          cd $GITHUB_WORKSPACE/$ANSIBLE_ROLE
+          set -x
+          curl -o requirements.txt "$settings_repo/requirements.txt"
+          curl -o .ansible-lint "$settings_repo/.ansible-lint"
+          curl -o .yamllint "$settings_repo/.yamllint"
+          pip install -r requirements.txt
+        continue-on-error: true
       - name: Environment
         run: |
+          set -x
           pwd
           env
           find -ls
+          cat /proc/sys/kernel/random/entropy_avail
+          sudo apt-get install -y rng-tools
+          cat /proc/sys/kernel/random/entropy_avail
       - name: run test
         run: |
-          cd $GITHUB_WORKSPACE/juju4.gpgkey_generate && molecule test
+          cd $GITHUB_WORKSPACE/$ANSIBLE_ROLE && molecule test
         env:
           PY_COLORS: '1'
           ANSIBLE_FORCE_COLOR: '1'
